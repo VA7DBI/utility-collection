@@ -1,11 +1,11 @@
 # Simple script to automate the creation of a "passwordless" local user. 
-
 param(
     [Parameter(Mandatory = $true)]
     [string]$Username,
 
     [switch]$Admin,
-    [switch]$OnStart
+    [switch]$OnStart,
+    [switch]$Kiosk
 )
 
 # Ensure script is running as admin
@@ -101,6 +101,22 @@ if ($OnStart) {
     }
     catch {
         Log "ERROR: Failed to configure automatic login: $_"
+    }
+}
+
+# Enable kiosk mode (Assigned Access)
+if ($Kiosk) {
+    try {
+        # Default kiosk app: Microsoft Edge in kiosk mode
+        $AppUserModelId = "Microsoft.MicrosoftEdge_8wekyb3d8bbwe!App"
+
+        # Configure Assigned Access
+        Set-AssignedAccess -UserName $Username -AppUserModelId $AppUserModelId
+
+        Log "Kiosk mode enabled for '$Username' using Microsoft Edge."
+    }
+    catch {
+        Log "ERROR: Failed to configure kiosk mode: $_"
     }
 }
 
