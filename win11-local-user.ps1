@@ -1,11 +1,14 @@
 # Simple script to automate the creation of a "passwordless" local user. 
+
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$Username,
 
     [switch]$Admin,
     [switch]$OnStart,
-    [switch]$Kiosk
+    [switch]$Kiosk,
+    [switch]$Remove
 )
 
 # Ensure script is running as admin
@@ -23,7 +26,70 @@ function Log {
     Write-Output $Message
 }
 
-Log "Starting user creation for '$Username'."
+Log "Script started for user '$Username'."
+
+# ---------------------------------------------------------
+# REMOVE MODE
+# ---------------------------------------------------------
+if ($Remove) {
+
+    Log "Entering REMOVE mode for user '$Username'."
+
+    # Remove kiosk mode if enabled
+    try {
+        Remove-AssignedAccess -UserName $Username -ErrorAction Stop
+        Log "Kiosk mode removed for '$Username'."
+    }
+    catch {
+        Log "Kiosk mode removal skipped or failed: $_"
+    }
+
+    # Remove autologin if this user was set
+    try {
+        $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+        $DefaultUser = (Get-ItemProperty -Path $RegPath -Name "DefaultUserName" -ErrorAction SilentlyContinue).DefaultUserName
+
+        if ($DefaultUser -eq $Username) {
+            Set-ItemProperty -Path $RegPath -Name "AutoAdminLogon" -Value "0"
+            Remove-ItemProperty -Path $RegPath -Name "DefaultUserName" -ErrorAction SilentlyContinue
+            Remove-ItemProperty -Path $RegPath -Name "DefaultPassword" -ErrorAction SilentlyContinue
+            Log "Autologin disabled for '$Username'."
+        }
+    }
+    catch {
+        Log "Autologin cleanup skipped or failed: $_"
+    }
+
+    # Remove user account
+    try {
+        Remove-LocalUser -Name $Username -ErrorAction Stop
+        Log "User '$Username' removed successfully."
+    }
+    catch {
+        Log "ERROR: Failed to remove user: $_"
+    }
+
+    # Remove home directory
+    $HomeDir = "C:\Users\$Username"
+    if (Test-Path $HomeDir) {
+        try {
+            Remove-Item -Path $HomeDir -Recurse -Force -ErrorAction Stop
+            Log "Home directory '$HomeDir' deleted."
+        }
+        catch {
+            Log "ERROR: Failed to delete home directory: $_"
+        }
+    }
+
+    Log "REMOVE mode completed."
+    exit 0
+}
+
+# ---------------------------------------------------------
+# CREATE MODE
+# ---------------------------------------------------------
+
+Log "Entering CREATE mode for '$Username'."
 
 # Create secure empty password
 $SecureEmptyPassword = ConvertTo-SecureString "" -AsPlainText -Force
@@ -93,31 +159,27 @@ if ($OnStart) {
     try {
         $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 
-        Set-ItemProperty -Path $RegPath -Name "AutoAdminLogon" -Value "1" -Type String
-        Set-ItemProperty -Path $RegPath -Name "DefaultUserName" -Value $Username -Type String
-        Set-ItemProperty -Path $RegPath -Name "DefaultPassword" -Value "" -Type String
+        Set-ItemProperty -Path $RegPath -Name "AutoAdminLogon" -Value "1"
+        Set-ItemProperty -Path $RegPath -Name "DefaultUserName" -Value $Username
+        Set-ItemProperty -Path $RegPath -Name "DefaultPassword" -Value ""
 
-        Log "Automatic login enabled for user '$Username'."
+        Log "Automatic login enabled for '$Username'."
     }
     catch {
         Log "ERROR: Failed to configure automatic login: $_"
     }
 }
 
-# Enable kiosk mode (Assigned Access)
+# Enable kiosk mode if requested
 if ($Kiosk) {
     try {
-        # Default kiosk app: Microsoft Edge in kiosk mode
         $AppUserModelId = "Microsoft.MicrosoftEdge_8wekyb3d8bbwe!App"
-
-        # Configure Assigned Access
         Set-AssignedAccess -UserName $Username -AppUserModelId $AppUserModelId
-
-        Log "Kiosk mode enabled for '$Username' using Microsoft Edge."
+        Log "Kiosk mode enabled for '$Username'."
     }
     catch {
         Log "ERROR: Failed to configure kiosk mode: $_"
     }
 }
 
-Log "User creation process completed."
+Log "CREATE mode completed."
