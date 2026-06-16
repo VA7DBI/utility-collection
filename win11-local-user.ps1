@@ -97,8 +97,7 @@ $SecureEmptyPassword = ConvertTo-SecureString "" -AsPlainText -Force
 # Create the user
 try {
     New-LocalUser -Name $Username `
-                  -Password $SecureEmptyPassword `
-                  -PasswordNeverExpires `
+                  -NoPassword `
                   -UserMayNotChangePassword `
                   -AccountNeverExpires `
                   -ErrorAction Stop
